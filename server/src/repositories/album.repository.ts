@@ -352,41 +352,58 @@ export class AlbumRepository {
     await this.addAssets(this.db, albumId, assetIds);
   }
 
-  create(album: Insertable<AlbumTable>, assetIds: string[], albumUsers: AlbumUserCreateDto[]) {
-    return this.db.transaction().execute(async (tx) => {
-      const newAlbum = await tx.insertInto('album').values(album).returning('album.id').executeTakeFirst();
+  @GenerateSql({
+    params: [{ albumName: DummyValue.STRING }, [], [{ userId: DummyValue.UUID, role: AlbumUserRole.Owner }]],
+  })
+  async create(album: Insertable<AlbumTable>, assetIds: string[], albumUsers: AlbumUserCreateDto[]) {
+    if (!albumUsers.some((u) => u.role === AlbumUserRole.Owner)) {
+      throw new Error('Album must have an owner');
+    }
 
-      if (!newAlbum) {
-        throw new Error('Failed to create album');
-      }
+    const userIds = albumUsers.map((u) => u.userId);
+    const roles = albumUsers.map((u) => u.role);
 
-      if (assetIds.length > 0) {
-        await this.addAssets(tx, newAlbum.id, assetIds);
-      }
-
-      if (albumUsers.length > 0) {
-        await tx
+    const result = await this.db
+      .with('album', (db) => db.insertInto('album').values(album).returningAll())
+      .with('album_user', (db) =>
+        db
           .insertInto('album_user')
-          .values(
-            albumUsers.map((albumUser) => ({ albumId: newAlbum.id, userId: albumUser.userId, role: albumUser.role })),
+          .expression((eb) =>
+            eb
+              .selectFrom('album')
+              .select(({ ref }) => [
+                ref('album.id').as('albumId'),
+                sql`unnest(${userIds}::uuid[])`.as('userId'),
+                sql`unnest(${roles}::varchar[])`.as('role'),
+              ]),
           )
-          .execute();
-      }
+          .returning(['album_user.albumId', 'album_user.userId', 'album_user.role']),
+      )
+      .with('album_asset', (db) =>
+        db
+          .insertInto('album_asset')
+          .expression((eb) =>
+            eb
+              .selectFrom('album')
+              .select(({ ref }) => [ref('album.id').as('albumId'), sql`unnest(${assetIds}::uuid[])`.as('assetId')]),
+          )
+          .onConflict((oc) => oc.doNothing())
+          .returning(['album_asset.albumId', 'album_asset.assetId']),
+      )
+      .selectFrom('album')
+      .selectAll('album')
+      .innerJoin('album_user', (join) =>
+        join.onRef('album_user.albumId', '=', 'album.id').on('album_user.role', '=', sql.lit(AlbumUserRole.Owner)),
+      )
+      .select('album_user.userId as ownerId')
+      .$narrowType<{ ownerId: NotNull }>()
+      .select(withOwner)
+      .select(withAlbumUsers)
+      .select(withAssets)
+      .$narrowType<{ assets: NotNull }>()
+      .executeTakeFirstOrThrow();
 
-      return tx
-        .selectFrom('album')
-        .selectAll('album')
-        .where('id', '=', newAlbum.id)
-        .innerJoin('album_user', (join) =>
-          join.onRef('album_user.albumId', '=', 'album.id').on('album_user.role', '=', sql.lit(AlbumUserRole.Owner)),
-        )
-        .select('album_user.userId as ownerId')
-        .select(withOwner)
-        .select(withAssets)
-        .select(withAlbumUsers)
-        .$narrowType<{ assets: NotNull; ownerId: NotNull }>()
-        .executeTakeFirstOrThrow();
-    });
+    return result;
   }
 
   update(id: string, album: Updateable<AlbumTable>) {

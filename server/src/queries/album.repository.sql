@@ -466,6 +466,122 @@ where
   "album_asset"."albumId" = $1
   and "album_asset"."assetId" in ($2)
 
+-- AlbumRepository.create
+with
+  "album" as (
+    insert into
+      "album" ("albumName")
+    values
+      ($1)
+    returning
+      *
+  ),
+  "album_user" as (
+    insert into
+      "album_user"
+    select
+      "album"."id" as "albumId",
+      unnest($2::uuid[]) as "userId",
+      unnest($3::varchar[]) as "role"
+    from
+      "album"
+    returning
+      "album_user"."albumId",
+      "album_user"."userId",
+      "album_user"."role"
+  ),
+  "album_asset" as (
+    insert into
+      "album_asset"
+    select
+      "album"."id" as "albumId",
+      unnest($4::uuid[]) as "assetId"
+    from
+      "album"
+    on conflict do nothing
+    returning
+      "album_asset"."albumId",
+      "album_asset"."assetId"
+  )
+select
+  "album".*,
+  "album_user"."userId" as "ownerId",
+  (
+    select
+      to_json(obj)
+    from
+      (
+        select
+          "id",
+          "name",
+          "email",
+          "avatarColor",
+          "profileImagePath",
+          "profileChangedAt"
+        from
+          "user"
+        where
+          "user"."id" = "album_user"."userId"
+      ) as obj
+  ) as "owner",
+  (
+    select
+      coalesce(json_agg(agg), '[]')
+    from
+      (
+        select
+          "album_user"."role",
+          (
+            select
+              to_json(obj)
+            from
+              (
+                select
+                  "id",
+                  "name",
+                  "email",
+                  "avatarColor",
+                  "profileImagePath",
+                  "profileChangedAt"
+                from
+                  (
+                    select
+                      1
+                  ) as "dummy"
+              ) as obj
+          ) as "user"
+        from
+          "album_user"
+          inner join "user" on "user"."id" = "album_user"."userId"
+        where
+          "album_user"."albumId" = "album"."id"
+      ) as agg
+  ) as "albumUsers",
+  (
+    select
+      json_agg("asset") as "assets"
+    from
+      (
+        select
+          "asset".*,
+          "asset_exif" as "exifInfo"
+        from
+          "asset"
+          left join "asset_exif" on "asset"."id" = "asset_exif"."assetId"
+          inner join "album_asset" on "album_asset"."assetId" = "asset"."id"
+        where
+          "album_asset"."albumId" = "album"."id"
+          and "asset"."deletedAt" is null
+          and "asset"."visibility" in ('archive', 'timeline')
+        order by
+          "asset"."fileCreatedAt" desc
+      ) as "asset"
+  ) as "assets"
+from
+  "album"
+  inner join "album_user" on "album_user"."albumId" = "album"."id"
+  and "album_user"."role" = 'owner'
+
 -- AlbumRepository.getContributorCounts
 select
   "asset"."ownerId" as "userId",

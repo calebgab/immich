@@ -223,8 +223,9 @@ export class MediumTestContext<S extends BaseService = BaseService> {
 
   async newAlbum({ ownerId, ...dto }: Insertable<AlbumTable> & { ownerId: string }, assetIds?: string[]) {
     const album = mediumFactory.albumInsert(dto);
-    const result = await this.get(AlbumRepository).create(album, assetIds ?? [], []);
-    await this.get(AlbumUserRepository).create({ albumId: result.id, userId: ownerId, role: AlbumUserRole.Owner });
+    const result = await this.get(AlbumRepository).create(album, assetIds ?? [], [
+      { userId: ownerId, role: AlbumUserRole.Owner },
+    ]);
     return { album, result };
   }
 
