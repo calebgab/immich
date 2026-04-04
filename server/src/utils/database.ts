@@ -17,7 +17,7 @@ import { jsonArrayFrom, jsonObjectFrom } from 'kysely/helpers/postgres';
 import { Notice, PostgresError } from 'postgres';
 import { columns, lockableProperties, LockableProperty, Person } from 'src/database';
 import { AssetEditActionItem } from 'src/dtos/editing.dto';
-import { AlbumUserRole, AssetFileType, AssetVisibility, DatabaseExtension } from 'src/enum';
+import { AssetFileType, AssetVisibility, DatabaseExtension } from 'src/enum';
 import { AssetSearchBuilderOptions } from 'src/repositories/search.repository';
 import { DB } from 'src/schema';
 import { AssetExifTable } from 'src/schema/tables/asset-exif.table';
@@ -458,12 +458,5 @@ export const updateLockedColumns = <T extends Record<string, unknown> & { locked
   return exif;
 };
 
-export const isAlbumOwned = (ownerId: string) => (eb: ExpressionBuilder<DB, 'album'>) => {
-  return eb.exists(
-    eb
-      .selectFrom('album_user')
-      .whereRef('album_user.albumId', '=', 'album.id')
-      .where('album_user.role', '=', AlbumUserRole.Owner)
-      .where('album_user.userId', '=', ownerId),
-  );
-};
+export const dummy = sql`(select 1)`.as('dummy');
+export const selectNoFrom = <DB, TB extends keyof DB & string>(eb: ExpressionBuilder<DB, TB>) => eb.selectFrom(dummy);

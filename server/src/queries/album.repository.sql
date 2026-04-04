@@ -2,7 +2,7 @@
 
 -- AlbumRepository.getById
 with
-  "users" as (
+  "album_user" as (
     select
       *
     from
@@ -12,16 +12,7 @@ with
   )
 select
   "album".*,
-  (
-    select
-      "userId" as "ownerId"
-    from
-      "users"
-    where
-      "users"."role" = 'owner'
-    limit
-      1
-  ) as "ownerId",
+  "album_user"."userId" as "ownerId",
   (
     select
       to_json(obj)
@@ -36,8 +27,8 @@ select
           "profileChangedAt"
         from
           "user"
-          inner join "users" on "users"."userId" = "user"."id"
-          and "users"."role" = 'owner'
+        where
+          "user"."id" = "album_user"."userId"
       ) as obj
   ) as "owner",
   (
@@ -46,7 +37,7 @@ select
     from
       (
         select
-          "users"."role",
+          "album_user"."role",
           (
             select
               to_json(obj)
@@ -60,13 +51,17 @@ select
                   "profileImagePath",
                   "profileChangedAt"
                 from
-                  "user"
-                where
-                  "user"."id" = "users"."userId"
+                  (
+                    select
+                      1
+                  ) as "dummy"
               ) as obj
           ) as "user"
         from
-          "users"
+          "album_user"
+          inner join "user" on "user"."id" = "album_user"."userId"
+        where
+          "album_user"."albumId" = "album"."id"
       ) as agg
   ) as "albumUsers",
   (
@@ -104,6 +99,8 @@ select
   ) as "assets"
 from
   "album"
+  inner join "album_user" on "album_user"."albumId" = "album"."id"
+  and "album_user"."role" = 'owner'
 where
   "album"."id" = $2
   and "album"."deletedAt" is null
@@ -111,17 +108,7 @@ where
 -- AlbumRepository.getByAssetId
 select
   "album".*,
-  (
-    select
-      "userId" as "ownerId"
-    from
-      "album_user"
-    where
-      "album"."id" = "album_user"."albumId"
-      and "album_user"."role" = 'owner'
-    limit
-      1
-  ) as "ownerId",
+  "album_user"."userId" as "ownerId",
   (
     select
       to_json(obj)
@@ -136,8 +123,6 @@ select
           "profileChangedAt"
         from
           "user"
-          inner join "album_user" on "album"."id" = "album_user"."albumId"
-          and "album_user"."role" = 'owner'
         where
           "user"."id" = "album_user"."userId"
       ) as obj
@@ -162,13 +147,15 @@ select
                   "profileImagePath",
                   "profileChangedAt"
                 from
-                  "user"
-                where
-                  "user"."id" = "album_user"."userId"
+                  (
+                    select
+                      1
+                  ) as "dummy"
               ) as obj
           ) as "user"
         from
           "album_user"
+          inner join "user" on "user"."id" = "album_user"."userId"
         where
           "album_user"."albumId" = "album"."id"
       ) as agg
@@ -176,19 +163,14 @@ select
 from
   "album"
   inner join "album_asset" on "album_asset"."albumId" = "album"."id"
+  inner join "album_user" as "member" on "member"."albumId" = "album"."id"
+  and "member"."userId" = $1
+  inner join "album_user" on "album_user"."albumId" = "album"."id"
+  and "album_user"."role" = 'owner'
 where
-  exists (
-    select
-    from
-      "album_user"
-    where
-      "album_user"."albumId" = "album"."id"
-      and "album_user"."userId" = $1
-  )
-  and "album_asset"."assetId" = $2
+  "album_asset"."assetId" = $2
   and "album"."deletedAt" is null
 order by
-  "album"."createdAt" desc,
   "album"."createdAt" desc
 
 -- AlbumRepository.getByAssetIds
@@ -234,7 +216,7 @@ group by
 -- AlbumRepository.getOwned
 select
   "album".*,
-  $1 as "ownerId",
+  "album_user"."userId" as "ownerId",
   (
     select
       to_json(obj)
@@ -249,8 +231,6 @@ select
           "profileChangedAt"
         from
           "user"
-          inner join "album_user" on "album"."id" = "album_user"."albumId"
-          and "album_user"."role" = 'owner'
         where
           "user"."id" = "album_user"."userId"
       ) as obj
@@ -275,13 +255,15 @@ select
                   "profileImagePath",
                   "profileChangedAt"
                 from
-                  "user"
-                where
-                  "user"."id" = "album_user"."userId"
+                  (
+                    select
+                      1
+                  ) as "dummy"
               ) as obj
           ) as "user"
         from
           "album_user"
+          inner join "user" on "user"."id" = "album_user"."userId"
         where
           "album_user"."albumId" = "album"."id"
       ) as agg
@@ -301,34 +283,36 @@ select
   ) as "sharedLinks"
 from
   "album"
+  inner join "album_user" on "album_user"."albumId" = "album"."id"
+  and "album_user"."userId" = $1
+  and "album_user"."role" = 'owner'
 where
-  exists (
-    select
-    from
-      "album_user"
-    where
-      "album_user"."albumId" = "album"."id"
-      and "album_user"."role" = $2
-      and "album_user"."userId" = $3
-  )
-  and "album"."deletedAt" is null
+  "album"."deletedAt" is null
 order by
   "album"."createdAt" desc
 
 -- AlbumRepository.getShared
 select
   "album".*,
+  "album_user"."userId" as "ownerId",
   (
     select
-      "userId" as "ownerId"
+      to_json(obj)
     from
-      "album_user"
-    where
-      "album"."id" = "album_user"."albumId"
-      and "album_user"."role" = 'owner'
-    limit
-      1
-  ) as "ownerId",
+      (
+        select
+          "id",
+          "name",
+          "email",
+          "avatarColor",
+          "profileImagePath",
+          "profileChangedAt"
+        from
+          "user"
+        where
+          "user"."id" = "album_user"."userId"
+      ) as obj
+  ) as "owner",
   (
     select
       coalesce(json_agg(agg), '[]')
@@ -349,17 +333,69 @@ select
                   "profileImagePath",
                   "profileChangedAt"
                 from
-                  "user"
-                where
-                  "user"."id" = "album_user"."userId"
+                  (
+                    select
+                      1
+                  ) as "dummy"
               ) as obj
           ) as "user"
         from
           "album_user"
+          inner join "user" on "user"."id" = "album_user"."userId"
         where
           "album_user"."albumId" = "album"."id"
       ) as agg
   ) as "albumUsers",
+  (
+    select
+      coalesce(json_agg(agg), '[]')
+    from
+      (
+        select
+          "shared_link".*
+        from
+          "shared_link"
+        where
+          "shared_link"."albumId" = "album"."id"
+      ) as agg
+  ) as "sharedLinks"
+from
+  "album"
+  inner join (
+    select
+      "album_user"."albumId" as "id"
+    from
+      "album_user"
+    where
+      "album_user"."userId" = $1
+      and "album_user"."albumId" in (
+        select
+          "album_user"."albumId"
+        from
+          "album_user"
+        where
+          "album_user"."role" != 'owner'
+      )
+    union
+    select
+      "shared_link"."albumId" as "id"
+    from
+      "shared_link"
+    where
+      "shared_link"."userId" = $2
+      and "shared_link"."albumId" is not null
+  ) as "matching" on "matching"."id" = "album"."id"
+  inner join "album_user" on "album_user"."albumId" = "album"."id"
+  and "album_user"."role" = 'owner'
+where
+  "album"."deletedAt" is null
+order by
+  "album"."createdAt" desc
+
+-- AlbumRepository.getNotShared
+select
+  "album".*,
+  "album_user"."userId" as "ownerId",
   (
     select
       to_json(obj)
@@ -374,8 +410,6 @@ select
           "profileChangedAt"
         from
           "user"
-          inner join "album_user" on "album"."id" = "album_user"."albumId"
-          and "album_user"."role" = 'owner'
         where
           "user"."id" = "album_user"."userId"
       ) as obj
@@ -395,108 +429,18 @@ select
   ) as "sharedLinks"
 from
   "album"
-where
-  (
-    exists (
-      select
-      from
-        "album_user"
-      where
-        "album_user"."albumId" = "album"."id"
-        and (
-          "album_user"."userId" = $1
-          and "album_user"."role" != 'owner'
-        )
-    )
-    or (
-      exists (
-        select
-        from
-          "album_user"
-        where
-          "album_user"."albumId" = "album"."id"
-          and (
-            "album_user"."userId" = $2
-            and "album_user"."role" = 'owner'
-          )
-      )
-      and exists (
-        select
-        from
-          "album_user"
-        where
-          "album_user"."albumId" = "album"."id"
-          and "album_user"."role" != 'owner'
-      )
-    )
-    or exists (
-      select
-      from
-        "shared_link"
-      where
-        "shared_link"."albumId" = "album"."id"
-        and "shared_link"."userId" = $3
-    )
-  )
-  and "album"."deletedAt" is null
-order by
-  "album"."createdAt" desc
-
--- AlbumRepository.getNotShared
-select
-  "album".*,
-  (
-    select
-      "userId" as "ownerId"
-    from
-      "album_user"
-    where
-      "album"."id" = "album_user"."albumId"
-      and "album_user"."role" = 'owner'
-    limit
-      1
-  ) as "ownerId",
-  (
-    select
-      to_json(obj)
-    from
-      (
-        select
-          "id",
-          "name",
-          "email",
-          "avatarColor",
-          "profileImagePath",
-          "profileChangedAt"
-        from
-          "user"
-          inner join "album_user" on "album"."id" = "album_user"."albumId"
-          and "album_user"."role" = 'owner'
-        where
-          "user"."id" = "album_user"."userId"
-      ) as obj
-  ) as "owner"
-from
-  "album"
+  inner join "album_user" on "album_user"."albumId" = "album"."id"
+  and "album_user"."userId" = $1
+  and "album_user"."role" = 'owner'
 where
   "album"."deletedAt" is null
-  and (
-    not exists (
-      select
-      from
-        "album_user"
-      where
-        "album_user"."albumId" = "album"."id"
-        and "album_user"."role" != 'owner'
-    )
-    and exists (
-      select
-      from
-        "album_user"
-      where
-        "album_user"."albumId" = "album"."id"
-        and "album_user"."userId" = $1
-    )
+  and not exists (
+    select
+    from
+      "album_user" as "au"
+    where
+      "au"."albumId" = "album"."id"
+      and "au"."role" != 'owner'
   )
   and not exists (
     select
