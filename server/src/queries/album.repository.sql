@@ -466,6 +466,19 @@ where
   "album_asset"."albumId" = $1
   and "album_asset"."assetId" in ($2)
 
+-- AlbumRepository.addAssetIds
+insert into
+  "album_asset"
+select
+  $1::uuid as "albumId",
+  unnest($2::uuid[]) as "assetId"
+from
+  (
+    select
+      1
+  ) as "dummy"
+on conflict do nothing
+
 -- AlbumRepository.create
 with
   "album" as (

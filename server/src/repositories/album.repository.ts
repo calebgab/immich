@@ -18,7 +18,7 @@ import { AlbumUserRole } from 'src/enum';
 import { DB } from 'src/schema';
 import { AlbumTable } from 'src/schema/tables/album.table';
 import { AssetExifTable } from 'src/schema/tables/asset-exif.table';
-import { selectNoFrom, withDefaultVisibility } from 'src/utils/database';
+import { asUuid, dummy, selectNoFrom, withDefaultVisibility } from 'src/utils/database';
 
 export interface AlbumAssetCount {
   albumId: string;
@@ -348,8 +348,19 @@ export class AlbumRepository {
       .then((results) => new Set(results.map(({ assetId }) => assetId)));
   }
 
+  @GenerateSql({ params: [DummyValue.UUID, [DummyValue.UUID]] })
   async addAssetIds(albumId: string, assetIds: string[]): Promise<void> {
-    await this.addAssets(this.db, albumId, assetIds);
+    if (assetIds.length === 0) {
+      return;
+    }
+
+    await this.db
+      .insertInto('album_asset')
+      .expression((eb) =>
+        eb.selectFrom(dummy).select([asUuid(albumId).as('albumId'), sql`unnest(${assetIds}::uuid[])`.as('assetId')]),
+      )
+      .onConflict((oc) => oc.doNothing())
+      .execute();
   }
 
   @GenerateSql({
@@ -425,19 +436,6 @@ export class AlbumRepository {
 
   async delete(id: string): Promise<void> {
     await this.db.deleteFrom('album').where('id', '=', id).execute();
-  }
-
-  @Chunked({ paramIndex: 2, chunkSize: 30_000 })
-  private async addAssets(db: Kysely<DB>, albumId: string, assetIds: string[]): Promise<void> {
-    if (assetIds.length === 0) {
-      return;
-    }
-
-    await db
-      .insertInto('album_asset')
-      .values(assetIds.map((assetId) => ({ albumId, assetId })))
-      .onConflict((oc) => oc.doNothing())
-      .execute();
   }
 
   @Chunked({ chunkSize: 30_000 })
