@@ -288,6 +288,10 @@ export class AlbumService extends BaseService {
     const album = await this.findOrFail(id, { withAssets: false });
 
     for (const { userId, role } of albumUsers) {
+      if (role === AlbumUserRole.Owner) {
+        throw new BadRequestException('Cannot add another owner');
+      }
+
       if (album.ownerId === userId) {
         throw new BadRequestException('Cannot be shared with owner');
       }
