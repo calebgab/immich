@@ -29,7 +29,7 @@ export const album_user_after_insert = registerFunction({
   body: `
     BEGIN
       UPDATE album SET "updatedAt" = clock_timestamp(), "updateId" = immich_uuid_v7(clock_timestamp())
-      WHERE "id" IN (SELECT DISTINCT "albumId" FROM inserted_rows)
+      WHERE "id" IN (SELECT "albumId" FROM inserted_rows)
         AND NOT EXISTS (SELECT FROM inserted_rows WHERE role = 'owner');
       RETURN NULL;
     END`,
