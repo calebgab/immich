@@ -107,6 +107,10 @@ With these steps in place, you should be able to use OAuth from the [Mobile App]
 Immich has a route (`/api/oauth/mobile-redirect`) that is already configured to forward requests to `app.immich:///oauth-callback`, and can be used for step 1.
 :::
 
+## Disable Password Authentication
+
+Once you've tested SSO, and happy with it, if you are wanting to enforce MFA (most likely the reason you setup OAUTH in the first place) you need to disable Password Authentication so that SSO is the only login method. Without disabling Password Authentication, logins CAN use MFA, but aren't required to use MFA. Please refer to [Server Commands](https://docs.immich.app/administration/server-commands) on how to disable Passwords, and how to re-enable Passwords via CLI if OAUTH breaks.
+
 ## Example Configuration
 
 <details>
